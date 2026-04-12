@@ -1,0 +1,95 @@
+   Compiling torch-sys v0.22.0
+warning: torch-sys@0.22.0: libtch/torch_api.cpp:1:9: fatal error: torch/csrc/autograd/engine.h: No such file or directory
+warning: torch-sys@0.22.0:     1 | #include<torch/csrc/autograd/engine.h>
+warning: torch-sys@0.22.0:       |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: torch-sys@0.22.0: compilation terminated.
+warning: torch-sys@0.22.0: ToolExecError: command did not execute successfully (status code exit status: 1): LC_ALL="C" "c++" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-gdwarf-4" "-fno-omit-frame-pointer" "-m64" "-I" "/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/libtorch/libtorch/include" "-I" "/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/libtorch/libtorch/include/torch/csrc/api/include" "-w" "-Wl,-rpath=/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/libtorch/libtorch/lib" "-std=c++17" "-D_GLIBCXX_USE_CXX11_ABI=1" "-DGLOG_USE_GLOG_EXPORT" "-o" "/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/580bbbcdaf464958-torch_api.o" "-c" "libtch/torch_api.cpp"cargo:warning=In file included from libtch/torch_api_generated.h:2,
+warning: torch-sys@0.22.0:                  from libtch/torch_api_generated.cpp:2:
+warning: torch-sys@0.22.0: libtch/torch_api.h:6:9: fatal error: torch/torch.h: No such file or directory
+warning: torch-sys@0.22.0:     6 | #include<torch/torch.h>
+warning: torch-sys@0.22.0:       |         ^~~~~~~~~~~~~~~
+warning: torch-sys@0.22.0: compilation terminated.
+warning: torch-sys@0.22.0: ToolExecError: command did not execute successfully (status code exit status: 1): LC_ALL="C" "c++" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-gdwarf-4" "-fno-omit-frame-pointer" "-m64" "-I" "/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/libtorch/libtorch/include" "-I" "/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/libtorch/libtorch/include/torch/csrc/api/include" "-w" "-Wl,-rpath=/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/libtorch/libtorch/lib" "-std=c++17" "-D_GLIBCXX_USE_CXX11_ABI=1" "-DGLOG_USE_GLOG_EXPORT" "-o" "/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/580bbbcdaf464958-torch_api_generated.o" "-c" "libtch/torch_api_generated.cpp"
+error: failed to run custom build command for `torch-sys v0.22.0`
+
+Caused by:
+  process didn't exit successfully: `/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-698cb9c6bad9ac86/build-script-build` (exit status: 1)
+  --- stdout
+  cargo:rerun-if-env-changed=LIBTORCH_USE_PYTORCH
+  cargo:rerun-if-env-changed=LIBTORCH
+  cargo:rerun-if-env-changed=TORCH_CUDA_VERSION
+  cargo:rerun-if-env-changed=LIBTORCH_INCLUDE
+  cargo:rerun-if-env-changed=LIBTORCH_LIB
+  cargo:rerun-if-env-changed=LIBTORCH_CXX11_ABI
+  cargo:rerun-if-env-changed=LIBTORCH_STATIC
+  cargo:rustc-link-search=native=/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/libtorch/libtorch/lib
+  cargo:rerun-if-changed=libtch/torch_python.cpp
+  cargo:rerun-if-changed=libtch/torch_python.h
+  cargo:rerun-if-changed=libtch/torch_api_generated.cpp
+  cargo:rerun-if-changed=libtch/torch_api_generated.h
+  cargo:rerun-if-changed=libtch/torch_api.cpp
+  cargo:rerun-if-changed=libtch/torch_api.h
+  cargo:rerun-if-changed=libtch/stb_image_write.h
+  cargo:rerun-if-changed=libtch/stb_image_resize.h
+  cargo:rerun-if-changed=libtch/stb_image.h
+  cargo:libtorch_lib=/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/libtorch/libtorch/lib
+  cargo:rerun-if-env-changed=CC_FORCE_DISABLE
+  CC_FORCE_DISABLE = None
+  cargo:rerun-if-env-changed=CXX_x86_64-unknown-linux-gnu
+  CXX_x86_64-unknown-linux-gnu = None
+  cargo:rerun-if-env-changed=CXX_x86_64_unknown_linux_gnu
+  CXX_x86_64_unknown_linux_gnu = None
+  cargo:rerun-if-env-changed=HOST_CXX
+  HOST_CXX = None
+  cargo:rerun-if-env-changed=CXX
+  CXX = None
+  cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+  cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+  CRATE_CC_NO_DEFAULTS = None
+  cargo:rerun-if-env-changed=CXXFLAGS
+  CXXFLAGS = None
+  cargo:rerun-if-env-changed=HOST_CXXFLAGS
+  HOST_CXXFLAGS = None
+  cargo:rerun-if-env-changed=CXXFLAGS_x86_64_unknown_linux_gnu
+  CXXFLAGS_x86_64_unknown_linux_gnu = None
+  cargo:rerun-if-env-changed=CXXFLAGS_x86_64-unknown-linux-gnu
+  CXXFLAGS_x86_64-unknown-linux-gnu = None
+  cargo:rerun-if-env-changed=CXX_x86_64-unknown-linux-gnu
+  CXX_x86_64-unknown-linux-gnu = None
+  cargo:rerun-if-env-changed=CXX_x86_64_unknown_linux_gnu
+  CXX_x86_64_unknown_linux_gnu = None
+  cargo:rerun-if-env-changed=HOST_CXX
+  HOST_CXX = None
+  cargo:rerun-if-env-changed=CXX
+  CXX = None
+  cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+  CRATE_CC_NO_DEFAULTS = None
+  cargo:rerun-if-env-changed=CXXFLAGS
+  CXXFLAGS = None
+  cargo:rerun-if-env-changed=HOST_CXXFLAGS
+  HOST_CXXFLAGS = None
+  cargo:rerun-if-env-changed=CXXFLAGS_x86_64_unknown_linux_gnu
+  CXXFLAGS_x86_64_unknown_linux_gnu = None
+  cargo:rerun-if-env-changed=CXXFLAGS_x86_64-unknown-linux-gnu
+  CXXFLAGS_x86_64-unknown-linux-gnu = None
+  cargo:warning=libtch/torch_api.cpp:1:9: fatal error: torch/csrc/autograd/engine.h: No such file or directory
+  cargo:warning=    1 | #include<torch/csrc/autograd/engine.h>
+  cargo:warning=      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  cargo:warning=compilation terminated.
+  exit status: 1
+  cargo:warning=ToolExecError: command did not execute successfully (status code exit status: 1): LC_ALL="C" "c++" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-gdwarf-4" "-fno-omit-frame-pointer" "-m64" "-I" "/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/libtorch/libtorch/include" "-I" "/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/libtorch/libtorch/include/torch/csrc/api/include" "-w" "-Wl,-rpath=/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/libtorch/libtorch/lib" "-std=c++17" "-D_GLIBCXX_USE_CXX11_ABI=1" "-DGLOG_USE_GLOG_EXPORT" "-o" "/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/580bbbcdaf464958-torch_api.o" "-c" "libtch/torch_api.cpp"cargo:warning=In file included from libtch/torch_api_generated.h:2,
+  cargo:warning=                 from libtch/torch_api_generated.cpp:2:
+  cargo:warning=libtch/torch_api.h:6:9: fatal error: torch/torch.h: No such file or directory
+  cargo:warning=    6 | #include<torch/torch.h>
+  cargo:warning=      |         ^~~~~~~~~~~~~~~
+  cargo:warning=compilation terminated.
+
+  exit status: 1
+  cargo:warning=ToolExecError: command did not execute successfully (status code exit status: 1): LC_ALL="C" "c++" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-gdwarf-4" "-fno-omit-frame-pointer" "-m64" "-I" "/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/libtorch/libtorch/include" "-I" "/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/libtorch/libtorch/include/torch/csrc/api/include" "-w" "-Wl,-rpath=/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/libtorch/libtorch/lib" "-std=c++17" "-D_GLIBCXX_USE_CXX11_ABI=1" "-DGLOG_USE_GLOG_EXPORT" "-o" "/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/580bbbcdaf464958-torch_api_generated.o" "-c" "libtch/torch_api_generated.cpp"
+
+  --- stderr
+
+
+  error occurred in cc-rs: command did not execute successfully (status code exit status: 1): LC_ALL="C" "c++" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-gdwarf-4" "-fno-omit-frame-pointer" "-m64" "-I" "/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/libtorch/libtorch/include" "-I" "/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/libtorch/libtorch/include/torch/csrc/api/include" "-w" "-Wl,-rpath=/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/libtorch/libtorch/lib" "-std=c++17" "-D_GLIBCXX_USE_CXX11_ABI=1" "-DGLOG_USE_GLOG_EXPORT" "-o" "/home/tarush/code/nanogpt-rs/target/debug/build/torch-sys-61133a73c65ece74/out/580bbbcdaf464958-torch_api_generated.o" "-c" "libtch/torch_api_generated.cpp"
+
+

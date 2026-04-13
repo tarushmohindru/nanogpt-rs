@@ -98,12 +98,12 @@ impl<B: Backend> Transformer<B> {
 
         assert!(t <= self.block_size);
 
-        let pos = Tensor::<B, 2>::arange(0..(t as i64), &device);
+        let pos = Tensor::<B, 1, Int>::arange(0..(t as i64), &device).unsqueeze::<2>();
         let pos_embd = self.wpe.forward(pos);
         let tok_embd = self.wte.forward(idx);
         let mut x = tok_embd + pos_embd;
 
-        for block in self.h {
+        for block in &self.h {
             x = block.forward(x);
         }
 
@@ -122,7 +122,11 @@ impl<B: Backend> GPT<B> {
         let x = self.transformer.forward(idx);
 
         let wte_weight = self.transformer.wte.weight.val();
-        let logits = x.matmul(wte_weight.transpose().unsqueeze::<3>());
+        let vocab_size = wte_weight.dims()[0];
+        let [b, t, c] = x.dims();
+        let x = x.reshape([b * t, c]);
+        let logits = x.matmul(wte_weight.transpose());
+        let logits = logits.reshape([b, t, vocab_size]);
 
         logits
     }

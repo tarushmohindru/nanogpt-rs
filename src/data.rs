@@ -22,6 +22,7 @@ use burn::data::dataset::InMemDataset;
 pub fn load_fineweb() -> impl Dataset<FineWebItem> {
     HuggingfaceDatasetLoader::new("HuggingFaceFW/fineweb-edu")
         .with_subset("sample-10BT")
+        .with_use_python_venv(false)
         .dataset("train")
         .unwrap()
 }

@@ -1,10 +1,6 @@
-use crate::config::{CausalSelfAttentionConfig, GPTConfig};
 use crate::train::train;
-use burn::backend::Autodiff;
+use burn::backend::{Autodiff, LibTorch};
 use burn::tensor::bf16;
-use burn::{Tensor, backend::LibTorch, tensor::Device};
-use std::fs::File;
-use std::io::Write;
 
 mod config;
 mod data;

@@ -87,6 +87,12 @@ pub struct TrainingConfig {
     grad_accum_steps: usize,
     #[config(default = 5000)]
     pub checkpoint_interval: usize,
+    #[config(default = 100000)]
+    pub total_steps: usize,
+    #[config(default = 500)]
+    pub val_interval: usize,
+    #[config(default = 20)]
+    pub val_batches: usize,
 }
 
 pub fn get_lr(step: usize, training_config: &TrainingConfig, total_steps: usize) -> f64 {
@@ -157,9 +163,6 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
 
     B::seed(&device, config.seed);
 
-    let total_steps = 100_000;
-    let val_interval = 500;
-
     // Resume from checkpoint or start fresh
     let (mut model, mut optim, mut step) = if resume {
         load_checkpoint::<B>(artifact_dir, &config, &device).unwrap_or_else(|| {
@@ -195,9 +198,10 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
     );
 
     let mut accum_step = 0;
+    let mut accum_loss = 0.0f64;
     let mut accumulator = GradientsAccumulator::new();
 
-    let mut wandb = WandbRun::init(
+    let wandb = WandbRun::init(
         "tarushmohindru",
         "nanogpt-rs-pretrain-1.0",
         json!({
@@ -224,38 +228,51 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
             .init(&device)
             .forward(logits, targets);
 
+        // Accumulate unscaled loss for logging (averaged after optimizer step)
+        accum_loss += loss.clone().into_scalar().to_f64();
+
         // Scale, backward immediately, accumulate — graph freed each micro-step
-        let loss_scaled = loss.clone() / config.grad_accum_steps as f64;
+        let loss_scaled = loss / config.grad_accum_steps as f64;
         let step_grads = GradientsParams::from_grads(loss_scaled.backward(), &model);
         accumulator.accumulate(&model, step_grads);
         accum_step += 1;
 
         if accum_step % config.grad_accum_steps == 0 {
-            let lr = get_lr(step, &config, total_steps);
+            let lr = get_lr(step, &config, config.total_steps);
             model = optim.step(lr, model, accumulator.grads());
             accumulator = GradientsAccumulator::new(); // reset for next window
 
-            let loss_val = loss.clone().into_scalar().to_f64();
+            // Average loss over all micro-batches in this accumulation window
+            let loss_val = accum_loss / config.grad_accum_steps as f64;
+            accum_loss = 0.0;
+
             let perplexity = loss_val.exp();
             let tokens_seen =
-                step * config.batch_size * config.model.block_size * config.grad_accum_steps;
+                (step + 1) * config.batch_size * config.model.block_size * config.grad_accum_steps;
 
             println!(
                 "[Step {step} | Tokens {tokens_seen}] Loss {loss_val:.4} | \
                  Perplexity {perplexity:.2} | LR {lr:.2e}"
             );
 
-            wandb.log(json!({
+            // Build combined metrics for a single wandb log per step
+            let mut metrics = json!({
                 "train/loss": loss_val,
                 "train/perplexity": perplexity,
                 "train/lr": lr,
                 "tokens_seen": tokens_seen,
-            }));
+            });
 
-            if step % val_interval == 0 {
+            // Validation: run every val_interval steps, skip step 0 (no training yet)
+            if step > 0 && step % config.val_interval == 0 {
                 let model_valid = model.valid();
-                let mut val_iter = test_dataset.iter();
-                if let Some(val_batch) = val_iter.next() {
+                let mut val_loss_sum = 0.0f64;
+                let mut val_count = 0;
+
+                for (i, val_batch) in test_dataset.iter().enumerate() {
+                    if i >= config.val_batches {
+                        break;
+                    }
                     let tokens = val_batch.tokens.inner();
                     let targets = val_batch.targets.inner();
                     let [b, t] = tokens.dims();
@@ -265,17 +282,23 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
                         logits.reshape([b * t, vocab_size]),
                         targets.reshape([b * t]),
                     );
-                    let val_loss = loss.into_scalar().to_f64();
+                    val_loss_sum += loss.into_scalar().to_f64();
+                    val_count += 1;
+                }
+
+                if val_count > 0 {
+                    let val_loss = val_loss_sum / val_count as f64;
                     println!(
-                        "[Val - Step {step}] Loss {val_loss:.4} | Perplexity {:.2}",
+                        "[Val - Step {step}] Loss {val_loss:.4} | Perplexity {:.2} ({val_count} batches)",
                         val_loss.exp()
                     );
-                    wandb.log(json!({
-                        "val/loss": val_loss,
-                        "val/perplexity": val_loss.exp(),
-                    }));
+                    metrics["val/loss"] = json!(val_loss);
+                    metrics["val/perplexity"] = json!(val_loss.exp());
                 }
             }
+
+            // Single wandb log per step keeps step counter aligned
+            wandb.log(metrics, step);
 
             if step % config.checkpoint_interval == 0 && step > 0 {
                 save_checkpoint(&model, step, artifact_dir);
@@ -284,7 +307,7 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
             step += 1;
             accum_step = 0;
 
-            if step >= total_steps {
+            if step >= config.total_steps {
                 break;
             }
         }

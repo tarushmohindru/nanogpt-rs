@@ -6,7 +6,6 @@ pub struct WandbRun {
     pub project: String,
     api_key: String,
     client: reqwest::blocking::Client,
-    step: usize,
 }
 
 impl WandbRun {
@@ -35,13 +34,12 @@ impl WandbRun {
             project: project.to_string(),
             api_key,
             client,
-            step: 0,
         }
     }
 
-    pub fn log(&mut self, metrics: Value) {
+    pub fn log(&self, metrics: Value, step: usize) {
         let mut payload = metrics.clone();
-        payload["_step"] = json!(self.step);
+        payload["_step"] = json!(step);
 
         self.client
             .post(format!(
@@ -52,8 +50,6 @@ impl WandbRun {
             .json(&json!({ "history": [payload] }))
             .send()
             .ok(); // Don't crash training on logging failure
-
-        self.step += 1;
     }
 
     pub fn finish(&self) {

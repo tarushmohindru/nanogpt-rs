@@ -3,7 +3,7 @@ use core::f32;
 use burn::module::Param;
 use burn::{
     nn::{
-        Embedding, Gelu, LayerNorm, Linear,
+        Dropout, Embedding, Gelu, LayerNorm, Linear,
         attention::{MhaInput, MultiHeadAttention},
     },
     prelude::*,
@@ -60,6 +60,7 @@ pub struct MLP<B: Backend> {
     pub c_fc: Linear<B>,
     pub act: Gelu,
     pub c_proj: Linear<B>,
+    pub dropout: Dropout,
 }
 
 impl<B: Backend> MLP<B> {
@@ -67,7 +68,7 @@ impl<B: Backend> MLP<B> {
         let x = self.c_fc.forward(x);
         let x = self.act.forward(x);
         let x = self.c_proj.forward(x);
-        x
+        self.dropout.forward(x)
     }
 }
 
@@ -93,6 +94,7 @@ pub struct Transformer<B: Backend> {
     pub wpe: Embedding<B>,
     pub h: Vec<Block<B>>,
     pub ln_f: LayerNorm<B>,
+    pub drop: Dropout,
     pub block_size: usize,
 }
 
@@ -106,7 +108,7 @@ impl<B: Backend> Transformer<B> {
         let pos = Tensor::<B, 1, Int>::arange(0..(t as i64), &device).unsqueeze::<2>();
         let pos_embd = self.wpe.forward(pos);
         let tok_embd = self.wte.forward(idx);
-        let mut x = tok_embd + pos_embd;
+        let mut x = self.drop.forward(tok_embd + pos_embd);
 
         for block in &self.h {
             x = block.forward(x);
@@ -126,6 +128,9 @@ impl<B: Backend> GPT<B> {
     pub fn forward(&self, idx: Tensor<B, 2, Int>) -> Tensor<B, 3> {
         let x = self.transformer.forward(idx);
 
+        // Weight tying: reuse token embedding weights as the output projection.
+        // Param::val() preserves autograd tracking in Burn's Autodiff backend,
+        // so gradients flow back through the embedding weights from the LM head loss.
         let wte_weight = self.transformer.wte.weight.val();
         let vocab_size = wte_weight.dims()[0];
         let [b, t, c] = x.dims();
@@ -144,6 +149,13 @@ impl<B: Backend> GPT<B> {
             let w = block.mlp.c_proj.weight.val();
             let scaled = w * scale;
             block.mlp.c_proj.weight = Param::from_tensor(scaled.detach());
+
+            // TODO: Also scale attention output projection (c_proj) by the same factor.
+            // Burn's MultiHeadAttention wraps its output Linear internally with private
+            // fields, so we cannot access mha.output.weight directly. This means the
+            // attention residual path is unscaled — a known asymmetry. If training
+            // instability is observed, consider replacing MHA with a custom attention
+            // implementation that exposes the output projection weights.
         }
 
         self

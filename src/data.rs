@@ -1,6 +1,7 @@
+use std::sync::Arc;
+
 use burn::{
     data::{
-        dataloader::DataLoader,
         dataloader::DataLoaderBuilder,
         dataloader::batcher::Batcher,
         dataset::{Dataset, HuggingfaceDatasetLoader},
@@ -9,7 +10,6 @@ use burn::{
     tensor::{Int, Tensor, TensorData},
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use tiktoken_rs::r50k_base;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -17,7 +17,7 @@ pub struct FineWebItem {
     pub text: String,
 }
 
-use burn::data::dataset::InMemDataset;
+use burn::data::dataset::SliceDataset;
 
 pub fn load_fineweb() -> impl Dataset<FineWebItem> {
     HuggingfaceDatasetLoader::new("HuggingFaceFW/fineweb-edu")
@@ -31,10 +31,8 @@ pub fn load_fineweb_train_test() -> (impl Dataset<FineWebItem>, impl Dataset<Fin
     let total = dataset.len();
     let split = (total as f64 * 0.9) as usize;
 
-    let all_items: Vec<FineWebItem> = (0..total).filter_map(|i| dataset.get(i)).collect();
-
-    let train = InMemDataset::new(all_items[..split].to_vec());
-    let test = InMemDataset::new(all_items[split..].to_vec());
+    let train = SliceDataset::new(Arc::new(dataset), 0, split);
+    let test = SliceDataset::new(Arc::new(dataset), split, total);
     (train, test)
 }
 
@@ -98,23 +96,25 @@ pub fn create_dataloader<B: Backend>(
     seed: u64,
     device: &B::Device,
 ) -> (
-    Arc<dyn DataLoader<B, TextBatch<B>>>,
-    Arc<dyn DataLoader<B, TextBatch<B>>>,
+    impl Iterator<Item = TextBatch<B>>,
+    impl Iterator<Item = TextBatch<B>>,
 ) {
     let (train_dataset, test_dataset) = load_fineweb_train_test();
     let batcher = TextBatcher::new(block_size);
 
-    let train_loader = DataLoaderBuilder::new(batcher.clone())
+    let train_loader = DataLoaderBuilder::new(batcher)
         .batch_size(batch_size)
         .shuffle(seed)
         .num_workers(num_workers)
-        .build(train_dataset);
+        .build(train_dataset)
+        .iter();
 
     let test_loader = DataLoaderBuilder::new(batcher)
         .batch_size(batch_size)
         .shuffle(seed)
         .num_workers(num_workers)
-        .build(test_dataset);
+        .build(test_dataset)
+        .iter();
 
     (train_loader, test_loader)
 }

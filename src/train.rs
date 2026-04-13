@@ -70,6 +70,19 @@ impl<B: Backend> InferenceStep for GPT<B> {
     }
 }
 
+fn accumulate_grads(mut base: GradientsParams, new: GradientsParams) -> GradientsParams {
+    // GradientsParams is a map of param_id -> gradient tensor
+    // We add matching gradients elementwise
+    for (id, new_grad) in new.into_iter() {
+        if let Some(base_grad) = base.remove(id) {
+            base.register(id, base_grad + new_grad);
+        } else {
+            base.register(id, new_grad);
+        }
+    }
+    base
+}
+
 #[derive(Config, Debug)]
 pub struct TrainingConfig {
     pub model: GPTConfig,
@@ -191,7 +204,7 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
     );
 
     let mut accum_step = 0;
-    let mut accum_loss: Option<Tensor<B, 1>> = None;
+    let mut accum_grads: Option<GradientsParams> = None;
 
     let mut wandb = WandbRun::init(
         "tarushmohindru",
@@ -221,18 +234,17 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
             .forward(logits, targets);
 
         let loss_scaled = loss.clone() / config.grad_accum_steps as f64;
+        let step_grads = GradientsParams::from_grads(loss_scaled.backward(), &model);
 
-        accum_loss = Some(match accum_loss.take() {
-            Some(existing) => existing + loss_scaled,
-            None => loss_scaled,
+        accum_grads = Some(match accum_grads.take() {
+            Some(existing) => accumulate_grads(existing, step_grads),
+            None => step_grads,
         });
         accum_step += 1;
 
         if accum_step % config.grad_accum_steps == 0 {
             let lr = get_lr(step, &config, total_steps);
-
-            let grads = GradientsParams::from_grads(accum_loss.take().unwrap().backward(), &model);
-            model = optim.step(lr, model, grads);
+            model = optim.step(lr, model, accum_grads.take().unwrap());
 
             let loss_val = loss.clone().into_scalar().to_f64();
             let perplexity = loss_val.exp();
@@ -281,6 +293,7 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
             }
 
             step += 1;
+            accum_step = 0;
 
             if step >= total_steps {
                 break;

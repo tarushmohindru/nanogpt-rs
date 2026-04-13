@@ -118,7 +118,7 @@ pub struct GPT<B: Backend> {
 }
 
 impl<B: Backend> GPT<B> {
-    pub fn forward(&self, idx: Tensor<B, 2, Int>, targets: Option<Tensor<B, 2>>) -> Tensor<B, 3> {
+    pub fn forward(&self, idx: Tensor<B, 2, Int>) -> Tensor<B, 3> {
         let x = self.transformer.forward(idx);
 
         let wte_weight = self.transformer.wte.weight.val();

@@ -143,7 +143,7 @@ impl<B: Backend> GPT<B> {
             // Scale MLP output projection
             let w = block.mlp.c_proj.weight.val();
             let scaled = w * scale;
-            block.mlp.c_proj.weight = Param::from_tensor(scaled);
+            block.mlp.c_proj.weight = Param::from_tensor(scaled.detach());
         }
 
         self

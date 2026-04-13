@@ -1,7 +1,10 @@
 use burn::{
     Tensor,
     config::Config,
-    nn::{Embedding, EmbeddingConfig, Gelu, LayerNorm, LayerNormConfig, Linear, LinearConfig},
+    nn::{
+        Embedding, EmbeddingConfig, Gelu, LayerNorm, LayerNormConfig, Linear, LinearConfig,
+        attention::{MultiHeadAttention, MultiHeadAttentionConfig},
+    },
     prelude::Backend,
 };
 
@@ -16,10 +19,7 @@ pub struct CausalSelfAttentionConfig {
 impl CausalSelfAttentionConfig {
     pub fn init<B: Backend>(&self, device: &B::Device) -> CausalSelfAttention<B> {
         CausalSelfAttention {
-            c_attn: LinearConfig::new(self.n_embd, self.n_embd * 3).init(device),
-            c_proj: LinearConfig::new(self.n_embd, self.n_embd).init(device),
-            n_embd: self.n_embd,
-            n_head: self.n_head,
+            mha: MultiHeadAttentionConfig::new(self.n_embd, self.n_head).init(device),
         }
     }
 }

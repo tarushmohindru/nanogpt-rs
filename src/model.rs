@@ -1,17 +1,17 @@
 use core::f32;
 
 use burn::{
-    nn::{Embedding, Gelu, LayerNorm, Linear},
+    nn::{
+        Embedding, Gelu, LayerNorm, Linear,
+        attention::{MhaInput, MultiHeadAttention},
+    },
     prelude::*,
     tensor::activation::softmax,
 };
 
 #[derive(Module, Debug)]
 pub struct CausalSelfAttention<B: Backend> {
-    pub c_attn: Linear<B>,
-    pub c_proj: Linear<B>,
-    pub n_embd: usize,
-    pub n_head: usize,
+    pub mha: MultiHeadAttention<B>,
 }
 
 impl<B: Backend> CausalSelfAttention<B> {
@@ -19,34 +19,38 @@ impl<B: Backend> CausalSelfAttention<B> {
         let device = x.device();
         let [b, t, c] = x.dims();
 
-        let qkv = self.c_attn.forward(x);
-        let q = qkv.clone().slice([0..b, 0..t, 0..self.n_embd]);
-        let k = qkv
-            .clone()
-            .slice([0..b, 0..t, self.n_embd..2 * self.n_embd]);
-        let v = qkv
-            .clone()
-            .slice([0..b, 0..t, 2 * self.n_embd..3 * self.n_embd]);
+        // let qkv = self.c_attn.forward(x);
+        // let q = qkv.clone().slice([0..b, 0..t, 0..self.n_embd]);
+        // let k = qkv
+        //     .clone()
+        //     .slice([0..b, 0..t, self.n_embd..2 * self.n_embd]);
+        // let v = qkv
+        //     .clone()
+        //     .slice([0..b, 0..t, 2 * self.n_embd..3 * self.n_embd]);
 
-        let q = q
-            .reshape([b, t, self.n_head, c / self.n_head])
-            .swap_dims(1, 2);
-        let k = k
-            .reshape([b, t, self.n_head, c / self.n_head])
-            .swap_dims(1, 2);
-        let v = v
-            .reshape([b, t, self.n_head, c / self.n_head])
-            .swap_dims(1, 2);
+        // let q = q
+        //     .reshape([b, t, self.n_head, c / self.n_head])
+        //     .swap_dims(1, 2);
+        // let k = k
+        //     .reshape([b, t, self.n_head, c / self.n_head])
+        //     .swap_dims(1, 2);
+        // let v = v
+        //     .reshape([b, t, self.n_head, c / self.n_head])
+        //     .swap_dims(1, 2);
 
-        let mask = Tensor::tril_mask([1, 1, t, t], 0, &device);
+        // let mask = Tensor::tril_mask([1, 1, t, t], 0, &device);
 
-        let scale = 1.0 / ((c / self.n_head) as f64).sqrt();
-        let mut att = (q.matmul(k.swap_dims(2, 3))) * (scale);
-        att = att.mask_fill(mask, f32::NEG_INFINITY);
-        let scores = softmax(att, 3);
-        let mut y = scores.matmul(v).swap_dims(1, 2).reshape([b, t, c]);
-        y = self.c_proj.forward(y);
-        return y;
+        // let scale = 1.0 / ((c / self.n_head) as f64).sqrt();
+        // let mut att = (q.matmul(k.swap_dims(2, 3))) * (scale);
+        // att = att.mask_fill(mask, f32::NEG_INFINITY);
+        // let scores = softmax(att, 3);
+        // let mut y = scores.matmul(v).swap_dims(1, 2).reshape([b, t, c]);
+        // y = self.c_proj.forward(y);
+        // return y;
+
+        let mask = Tensor::tril_mask([t, t], 0, &device).bool_not();
+        let mha_input = MhaInput::self_attn(x).mask_attn(mask);
+        self.mha.forward(mha_input).context
     }
 }
 

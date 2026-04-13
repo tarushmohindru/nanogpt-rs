@@ -188,7 +188,14 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
         load_checkpoint::<B>(artifact_dir, &config, &device).unwrap_or_else(|| {
             println!("No checkpoint found, starting fresh");
             let optim: OptimizerAdaptor<Adam, GPT<B>, B> = config.optimizer.init();
-            (config.model.init::<B>(&device), optim, 0)
+            (
+                config
+                    .model
+                    .init::<B>(&device)
+                    .apply_weight_init(config.model.n_layer),
+                optim,
+                0,
+            )
         })
     } else {
         let optim: OptimizerAdaptor<Adam, GPT<B>, B> = config.optimizer.init();

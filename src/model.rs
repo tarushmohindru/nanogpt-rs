@@ -134,4 +134,17 @@ impl<B: Backend> GPT<B> {
 
         logits
     }
+
+    pub fn apply_weight_init(mut self, n_layer: usize) -> Self {
+        let scale = (1.0 / (2.0 * n_layer as f64).sqrt()) as f32;
+
+        for block in self.transformer.h.iter_mut() {
+            // Scale MLP output projection
+            let w = block.mlp.c_proj.weight.val();
+            let scaled = w * scale;
+            block.mlp.c_proj.weight = burn::nn::Param::from_tensor(scaled);
+        }
+
+        self
+    }
 }

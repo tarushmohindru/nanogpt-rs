@@ -1,27 +1,23 @@
 use burn::optim::Adam;
+use burn::optim::GradientsAccumulator;
 use burn::optim::adaptor::OptimizerAdaptor;
-use burn::record::Recorder;
-use burn::record::{FullPrecisionSettings, NamedMpkFileRecorder};
 use burn::{
     Tensor,
     config::Config,
     module::AutodiffModule,
-    nn::loss::{CrossEntropyLoss, CrossEntropyLossConfig},
+    nn::loss::CrossEntropyLossConfig,
     optim::{AdamConfig, GradientsParams, Optimizer},
     prelude::*,
     record::CompactRecorder,
     tensor::Int,
     tensor::backend::AutodiffBackend,
-    train::{
-        ClassificationOutput, InferenceStep, Learner, SupervisedTraining, TrainOutput, TrainStep,
-        metric::{AccuracyMetric, LossMetric},
-    },
+    train::{ClassificationOutput, InferenceStep, TrainOutput, TrainStep},
 };
 use serde_json::json;
 
 use crate::{
     config::GPTConfig,
-    data::{TextBatch, TextBatcher, create_dataloader},
+    data::{TextBatch, create_dataloader},
     model::GPT,
     wandb::WandbRun,
 };
@@ -56,7 +52,6 @@ impl<B: AutodiffBackend> TrainStep for GPT<B> {
 
     fn step(&self, item: Self::Input) -> burn::train::TrainOutput<Self::Output> {
         let item = self.forward_classification(item.tokens, item.targets);
-
         TrainOutput::new(self, item.loss.backward(), item)
     }
 }
@@ -68,19 +63,6 @@ impl<B: Backend> InferenceStep for GPT<B> {
     fn step(&self, item: Self::Input) -> Self::Output {
         self.forward_classification(item.tokens, item.targets)
     }
-}
-
-fn accumulate_grads(mut base: GradientsParams, new: GradientsParams) -> GradientsParams {
-    // GradientsParams is a map of param_id -> gradient tensor
-    // We add matching gradients elementwise
-    for (id, new_grad) in new.into_iter() {
-        if let Some(base_grad) = base.remove(id) {
-            base.register(id, base_grad + new_grad);
-        } else {
-            base.register(id, new_grad);
-        }
-    }
-    base
 }
 
 #[derive(Config, Debug)]
@@ -168,11 +150,6 @@ fn load_checkpoint<B: AutodiffBackend>(
     Some((model, optim, step))
 }
 
-fn create_artifact_dir(artifact_dir: &str) {
-    std::fs::remove_dir_all(artifact_dir).ok();
-    std::fs::create_dir_all(artifact_dir).ok();
-}
-
 pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: bool) {
     let config_model = GPTConfig::new(1024, 50257, 12, 12, 768);
     let config_optimizer = AdamConfig::new();
@@ -199,7 +176,14 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
         })
     } else {
         let optim: OptimizerAdaptor<Adam, GPT<B>, B> = config.optimizer.init();
-        (config.model.init::<B>(&device), optim, 0)
+        (
+            config
+                .model
+                .init::<B>(&device)
+                .apply_weight_init(config.model.n_layer),
+            optim,
+            0,
+        )
     };
 
     let (train_dataset, mut test_dataset) = create_dataloader(
@@ -211,7 +195,7 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
     );
 
     let mut accum_step = 0;
-    let mut accum_grads: Option<GradientsParams> = None;
+    let mut accumulator = GradientsAccumulator::new();
 
     let mut wandb = WandbRun::init(
         "tarushmohindru",
@@ -240,18 +224,16 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
             .init(&device)
             .forward(logits, targets);
 
+        // Scale, backward immediately, accumulate — graph freed each micro-step
         let loss_scaled = loss.clone() / config.grad_accum_steps as f64;
         let step_grads = GradientsParams::from_grads(loss_scaled.backward(), &model);
-
-        accum_grads = Some(match accum_grads.take() {
-            Some(existing) => accumulate_grads(existing, step_grads),
-            None => step_grads,
-        });
+        accumulator.accumulate(&model, step_grads);
         accum_step += 1;
 
         if accum_step % config.grad_accum_steps == 0 {
             let lr = get_lr(step, &config, total_steps);
-            model = optim.step(lr, model, accum_grads.take().unwrap());
+            model = optim.step(lr, model, accumulator.grads());
+            accumulator = GradientsAccumulator::new(); // reset for next window
 
             let loss_val = loss.clone().into_scalar().to_f64();
             let perplexity = loss_val.exp();

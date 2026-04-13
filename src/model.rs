@@ -1,5 +1,6 @@
 use core::f32;
 
+use burn::module::Param;
 use burn::{
     nn::{
         Embedding, Gelu, LayerNorm, Linear,
@@ -142,7 +143,7 @@ impl<B: Backend> GPT<B> {
             // Scale MLP output projection
             let w = block.mlp.c_proj.weight.val();
             let scaled = w * scale;
-            block.mlp.c_proj.weight = burn::nn::Param::from_tensor(scaled);
+            block.mlp.c_proj.weight = Param::from_tensor(scaled);
         }
 
         self

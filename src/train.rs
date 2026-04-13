@@ -1,20 +1,23 @@
+use burn::optim::Adam;
+use burn::optim::adaptor::OptimizerAdaptor;
+use burn::record::Recorder;
+use burn::record::{FullPrecisionSettings, NamedMpkFileRecorder};
 use burn::{
-    Tensor::{self, Int},
+    Tensor,
     config::Config,
     module::AutodiffModule,
     nn::loss::{CrossEntropyLoss, CrossEntropyLossConfig},
     optim::{AdamConfig, GradientsParams, Optimizer},
-    prelude::{Backend, ToElement},
+    prelude::*,
     record::CompactRecorder,
+    tensor::Int,
     tensor::backend::AutodiffBackend,
     train::{
         ClassificationOutput, InferenceStep, Learner, SupervisedTraining, TrainOutput, TrainStep,
         metric::{AccuracyMetric, LossMetric},
     },
 };
-
-use burn::optim::Adam;
-use burn::optim::adaptor::OptimizerAdaptor;
+use serde_json::json;
 
 use crate::{
     config::GPTConfig,
@@ -103,12 +106,7 @@ pub fn get_lr(step: usize, training_config: &TrainingConfig, total_steps: usize)
         + cosine * (training_config.learning_rate - training_config.learning_rate_min)
 }
 
-fn save_checkpoint<B: AutodiffBackend>(
-    model: &GPT<B>,
-    optim: &OptimizerAdaptor<Adam, GPT<B>, B>,
-    step: usize,
-    artifact_dir: &str,
-) {
+fn save_checkpoint<B: AutodiffBackend>(model: &GPT<B>, step: usize, artifact_dir: &str) {
     let checkpoint_dir = format!("{artifact_dir}/checkpoints/step-{step}");
     std::fs::create_dir_all(&checkpoint_dir).ok();
 
@@ -117,12 +115,6 @@ fn save_checkpoint<B: AutodiffBackend>(
         .save_file(format!("{checkpoint_dir}/model"), &CompactRecorder::new())
         .expect("Failed to save model checkpoint");
 
-    optim
-        .to_record()
-        .save_file(format!("{checkpoint_dir}/optim"), &CompactRecorder::new())
-        .expect("Failed to save optimizer checkpoint");
-
-    // Save step metadata so we can resume
     std::fs::write(
         format!("{checkpoint_dir}/meta.json"),
         serde_json::json!({ "step": step }).to_string(),
@@ -137,9 +129,8 @@ fn load_checkpoint<B: AutodiffBackend>(
     config: &TrainingConfig,
     device: &B::Device,
 ) -> Option<(GPT<B>, OptimizerAdaptor<Adam, GPT<B>, B>, usize)> {
-    // Find the latest checkpoint by step number
     let checkpoint_dir = format!("{artifact_dir}/checkpoints");
-    let latest = std::fs::read_dir(&checkpoint_dir)
+    let (step, path) = std::fs::read_dir(&checkpoint_dir)
         .ok()?
         .filter_map(|e| e.ok())
         .filter_map(|e| {
@@ -147,27 +138,20 @@ fn load_checkpoint<B: AutodiffBackend>(
             let step = name.strip_prefix("step-")?.parse::<usize>().ok()?;
             Some((step, e.path()))
         })
-        .max_by_key(|(step, _)| *step);
+        .max_by_key(|(step, _)| *step)?;
 
-    let (step, path) = latest?;
     let path = path.to_str()?;
 
-    let model = GPTConfig::new(1024, 50257, 24, 16, 1024)
+    let model = config
+        .model
         .init::<B>(device)
         .load_file(format!("{path}/model"), &CompactRecorder::new(), device)
         .expect("Failed to load model checkpoint");
 
-    let optim = AdamConfig::new().load_record(
-        NamedMpkFileRecorder::<FullPrecisionSettings>::new()
-            .load(format!("{path}/optim").into(), device)
-            .expect("Failed to load optimizer checkpoint"),
-    );
+    // Optimizer restarts fresh — loses momentum but model weights are restored
+    let optim: OptimizerAdaptor<Adam, GPT<B>, B> = config.optimizer.init();
 
-    let meta: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(format!("{path}/meta.json")).ok()?).ok()?;
-    let step = meta["step"].as_u64()? as usize;
-
-    println!("[Checkpoint] Resuming from step {step}");
+    println!("[Checkpoint] Resuming model from step {step} (optimizer state reset)");
     Some((model, optim, step))
 }
 
@@ -207,7 +191,7 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
     );
 
     let mut accum_step = 0;
-    let mut accum_grads: Option<GradientsParams> = None;
+    let mut accum_loss: Option<Tensor<B, 1>> = None;
 
     let mut wandb = WandbRun::init(
         "tarushmohindru",
@@ -224,7 +208,7 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
         }),
     );
 
-    for batch in train_dataset {
+    for batch in train_dataset.iter() {
         let [b, t] = batch.tokens.dims();
         let logits = model.forward(batch.tokens);
 
@@ -238,18 +222,17 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
 
         let loss_scaled = loss.clone() / config.grad_accum_steps as f64;
 
-        let grads = loss_scaled.backward();
-        let grads = GradientsParams::from_grads(grads, &model);
-
-        accum_grads = Some(match accum_grads.take() {
-            Some(existing) => existing.accumulate(&model, grads),
-            None => grads,
+        accum_loss = Some(match accum_loss.take() {
+            Some(existing) => existing + loss_scaled,
+            None => loss_scaled,
         });
         accum_step += 1;
 
         if accum_step % config.grad_accum_steps == 0 {
             let lr = get_lr(step, &config, total_steps);
-            model = optim.step(lr, model, accum_grads.take().unwrap());
+
+            let grads = GradientsParams::from_grads(accum_loss.take().unwrap().backward(), &model);
+            model = optim.step(lr, model, grads);
 
             let loss_val = loss.clone().into_scalar().to_f64();
             let perplexity = loss_val.exp();
@@ -270,7 +253,8 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
 
             if step % val_interval == 0 {
                 let model_valid = model.valid();
-                if let Some(val_batch) = test_dataset.next() {
+                let mut val_iter = test_dataset.iter();
+                if let Some(val_batch) = val_iter.next() {
                     let tokens = val_batch.tokens.inner();
                     let targets = val_batch.targets.inner();
                     let [b, t] = tokens.dims();
@@ -293,7 +277,7 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
             }
 
             if step % config.checkpoint_interval == 0 && step > 0 {
-                save_checkpoint(&model, &optim, step, artifact_dir);
+                save_checkpoint(&model, step, artifact_dir);
             }
 
             step += 1;
@@ -305,6 +289,6 @@ pub fn train<B: AutodiffBackend>(device: B::Device, artifact_dir: &str, resume: 
     }
 
     // Final checkpoint
-    save_checkpoint(&model, &optim, step, artifact_dir);
+    save_checkpoint(&model, step, artifact_dir);
     wandb.finish();
 }
